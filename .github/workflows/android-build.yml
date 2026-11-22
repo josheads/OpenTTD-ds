@@ -164,19 +164,29 @@ jobs:
           set +e
           gradle -p android :app:assembleDebug :app:assembleRelease \
             -PhostBinaryDir="${GITHUB_WORKSPACE}/build-tools" \
-            -PndkVersion=27.2.12479018 \
-            --stacktrace 2>&1 | tee "${LOG_FILE}"
+            -PndkVersion=27.2.12479018 2>&1 | tee "${LOG_FILE}"
           STATUS=${PIPESTATUS[0]}
           set -e
           if [ "${STATUS}" -ne 0 ]; then
             python3 -c '
           import pathlib, re, sys
           lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
-          pat = re.compile(r"(CMake Error|error:|FAILED:|FAILURE:|What went wrong|^> |ld\.lld:|undefined symbol)", re.I)
-          hit = [l for l in lines if pat.search(l)]
-          msg = "\n".join(hit[-60:] + ["--- LOG TAIL ---"] + lines[-60:])[-3500:]
-          esc = msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-          print(f"::error title=Android Gradle/NDK Failure::{esc}")
+          def emit(title, body):
+              if not body.strip():
+                  return
+              esc = body[:3500].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title={title}::{esc}")
+          idx = next((i for i, l in enumerate(lines) if "What went wrong:" in l or "FAILURE:" in l), max(0, len(lines) - 80))
+          emit("Gradle What Went Wrong", "\n".join(lines[idx:]))
+          pat = re.compile(r"(CMake Error|fatal error:|error:|FAILED|ld\.lld:|undefined symbol|CXX\d+)", re.I)
+          ctx, seen = [], set()
+          for i, l in enumerate(lines):
+              if pat.search(l):
+                  for j in range(max(0, i - 1), min(len(lines), i + 5)):
+                      if j not in seen:
+                          seen.add(j)
+                          ctx.append(lines[j])
+          emit("Android Native/Java Errors", "\n".join(ctx))
           ' "${LOG_FILE}"
             exit "${STATUS}"
           fi
