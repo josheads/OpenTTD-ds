@@ -167,6 +167,11 @@ if(NOT PNG_FOUND)
             add_library(PNG::PNG ALIAS png)
         endif()
     endif()
+    unset(PNG_LIBRARY CACHE)
+    unset(PNG_LIBRARIES CACHE)
+    unset(PNG_PNG_INCLUDE_DIR CACHE)
+    set(PNG_LIBRARY PNG::PNG)
+    set(PNG_LIBRARIES PNG::PNG)
     set(PNG_FOUND TRUE)
 endif()
 
@@ -180,6 +185,16 @@ if(ANDROID AND NOT OPTION_DEDICATED AND NOT Freetype_FOUND AND NOT FREETYPE_FOUN
     set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
 
+    # FreeType's CMakeLists.txt checks if(PNG_FOUND) / if(ZLIB_FOUND) even when FT_DISABLE_* is ON.
+    set(_openttd_ft_saved_zlib_found "${ZLIB_FOUND}")
+    set(_openttd_ft_saved_png_found "${PNG_FOUND}")
+    set(ZLIB_FOUND FALSE)
+    set(PNG_FOUND FALSE)
+    set(BZIP2_FOUND FALSE)
+    set(HARFBUZZ_FOUND FALSE)
+    set(HarfBuzz_FOUND FALSE)
+    set(BROTLIDEC_FOUND FALSE)
+
     FetchContent_Declare(
         freetype
         GIT_REPOSITORY https://github.com/freetype/freetype.git
@@ -187,6 +202,9 @@ if(ANDROID AND NOT OPTION_DEDICATED AND NOT Freetype_FOUND AND NOT FREETYPE_FOUN
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(freetype)
+
+    set(ZLIB_FOUND "${_openttd_ft_saved_zlib_found}")
+    set(PNG_FOUND "${_openttd_ft_saved_png_found}")
 
     if(NOT TARGET Freetype::Freetype AND TARGET freetype)
         add_library(Freetype::Freetype ALIAS freetype)
