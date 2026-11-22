@@ -6,6 +6,24 @@ endif()
 
 include(FetchContent)
 
+if(OPENTTD_DEPS_CACHE_DIR)
+    file(TO_CMAKE_PATH "${OPENTTD_DEPS_CACHE_DIR}" _openttd_deps_cache_norm)
+    foreach(_dep_pair
+        "SDL3:SDL3"
+        "ZLIB:zlib"
+        "XZ:xz"
+        "LIBPNG:libpng"
+        "FREETYPE:freetype"
+    )
+        string(REPLACE ":" ";" _dep_parts "${_dep_pair}")
+        list(GET _dep_parts 0 _dep_uc)
+        list(GET _dep_parts 1 _dep_dir)
+        if(EXISTS "${_openttd_deps_cache_norm}/${_dep_dir}/CMakeLists.txt")
+            set(FETCHCONTENT_SOURCE_DIR_${_dep_uc} "${_openttd_deps_cache_norm}/${_dep_dir}" CACHE PATH "" FORCE)
+        endif()
+    endforeach()
+endif()
+
 # Isolate third-party FetchContent subprojects from OpenTTD's strict directory-level compiler flags.
 get_directory_property(_openttd_saved_compile_options COMPILE_OPTIONS)
 set_directory_properties(PROPERTIES COMPILE_OPTIONS "")

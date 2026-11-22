@@ -20,15 +20,22 @@ jobs:
   build-android:
     name: Android APK (AYN Thor arm64-v8a)
     runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-android
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "1"
+      CCACHE_COMPRESS: "1"
+      CCACHE_MAXSIZE: "2G"
+      CCACHE_SLOPPINESS: "pch_defines,time_macros,include_file_mtime,include_file_ctime"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ninja host build tool
+      - name: Install Ninja and ccache host build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build unzip
+          sudo apt-get install -y ninja-build unzip ccache
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -40,6 +47,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Cache CMake FetchContent dependency sources
+        uses: actions/cache@v4
+        with:
+          path: deps-cache
+          key: openttd-deps-src-v1-${{ runner.os }}-${{ hashFiles('cmake/FetchDualScreenDeps.cmake', 'scripts/populate_deps_cache.py') }}
+
+      - name: Populate CMake dependency source cache
+        run: |
+          python3 scripts/populate_deps_cache.py --platform android --cache-dir deps-cache
+
+      - name: Restore Android ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache-android
+          key: ccache-android-arm64-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-android-arm64-${{ github.sha }}-
+            ccache-android-arm64-
 
       - name: Set up Android SDK, NDK r27, and CMake 3.22.1
         run: |
@@ -109,11 +135,14 @@ jobs:
 
       - name: Build OpenTTD host tools (strgen, settingsgen)
         run: |
+          ccache --zero-stats
           SDK_CMAKE="${ANDROID_HOME}/cmake/3.22.1/bin/cmake"
           CMAKE_BIN="$([ -x "${SDK_CMAKE}" ] && echo "${SDK_CMAKE}" || echo cmake)"
           "${CMAKE_BIN}" -S . -B build-tools -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DOPTION_TOOLS_ONLY=ON
+            -DOPTION_TOOLS_ONLY=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           "${CMAKE_BIN}" --build build-tools --target tools -j "$(nproc)"
           test -f build-tools/strgen.cmake
           test -f build-tools/settingsgen.cmake
@@ -161,10 +190,13 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           LOG_FILE="${RUNNER_TEMP}/gradle-build.log"
+          CCACHE_BIN="$(command -v ccache)"
           set +e
           gradle -p android :app:assembleDebug :app:assembleRelease \
             -PhostBinaryDir="${GITHUB_WORKSPACE}/build-tools" \
-            -PndkVersion=27.2.12479018 2>&1 | tee "${LOG_FILE}"
+            -PndkVersion=27.2.12479018 \
+            -PccacheExecutable="${CCACHE_BIN}" \
+            -PdepsCacheDir="${GITHUB_WORKSPACE}/deps-cache" 2>&1 | tee "${LOG_FILE}"
           STATUS=${PIPESTATUS[0]}
           set -e
           if [ "${STATUS}" -ne 0 ]; then
@@ -190,6 +222,12 @@ jobs:
           ' "${LOG_FILE}"
             exit "${STATUS}"
           fi
+          STATS="$(ccache --show-stats)"
+          echo "${STATS}"
+          ESC="${STATS//%/%25}"
+          ESC="${ESC//$'\r'/%0D}"
+          ESC="${ESC//$'\n'/%0A}"
+          echo "::notice title=Android ccache stats::${ESC}"
 
       - name: Verify APK native libraries and runtime assets
         run: |
@@ -227,6 +265,13 @@ jobs:
   build-windows:
     name: Windows Dual-Screen Simulator & Tests
     runs-on: windows-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}\.ccache-windows
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "1"
+      CCACHE_COMPRESS: "1"
+      CCACHE_MAXSIZE: "2G"
+      CCACHE_SLOPPINESS: "pch_defines,time_macros,include_file_mtime,include_file_ctime"
 
     steps:
       - name: Checkout repository
@@ -236,6 +281,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Install ccache 4.10.2
+        shell: bash
+        run: |
+          TEMP_WIN="$(cygpath -m "${RUNNER_TEMP}")"
+          curl -fsSL "https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-windows-x86_64.zip" -o "${TEMP_WIN}/ccache.zip"
+          unzip -q "${TEMP_WIN}/ccache.zip" -d "${TEMP_WIN}/ccache-dist"
+          CCACHE_BIN_DIR="$(cd "${TEMP_WIN}/ccache-dist"/ccache-* && pwd -W)"
+          echo "${CCACHE_BIN_DIR}" >> "${GITHUB_PATH}"
 
       - name: Configure MSVC x64 developer environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -248,18 +302,73 @@ jobs:
           path: baseset-cache
           key: openttd-basesets-${{ hashFiles('scripts/fetch_basesets.py') }}
 
+      - name: Cache CMake FetchContent dependency sources
+        uses: actions/cache@v4
+        with:
+          path: deps-cache
+          key: openttd-deps-src-v1-${{ runner.os }}-${{ hashFiles('cmake/FetchDualScreenDeps.cmake', 'scripts/populate_deps_cache.py') }}
+
+      - name: Populate CMake dependency source cache
+        shell: bash
+        run: |
+          python scripts/populate_deps_cache.py --platform windows --cache-dir deps-cache
+
+      - name: Restore Windows ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache-windows
+          key: ccache-windows-x64-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-windows-x64-${{ github.sha }}-
+            ccache-windows-x64-
+
       - name: Configure Windows dual-screen build
         shell: bash
         run: |
+          ccache --zero-stats
+          WORKSPACE_POSIX="${GITHUB_WORKSPACE//\\//}"
+          CCACHE_POSIX="$(cygpath -m "$(command -v ccache)")"
           cmake -S . -B build-win -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DOPTION_DUAL_SCREEN=ON \
-            -DOPTION_FETCH_DEPS=ON
+            -DOPTION_FETCH_DEPS=ON \
+            -DOPENTTD_DEPS_CACHE_DIR="${WORKSPACE_POSIX}/deps-cache" \
+            -DCMAKE_C_COMPILER_LAUNCHER="${CCACHE_POSIX}" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER="${CCACHE_POSIX}" \
+            -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
 
       - name: Build openttd and openttd_test
         shell: bash
         run: |
-          cmake --build build-win --target openttd openttd_test
+          LOG_FILE="$(cygpath -m "${RUNNER_TEMP}")/windows-build.log"
+          set +e
+          cmake --build build-win --target openttd openttd_test 2>&1 | tee "${LOG_FILE}"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "${STATUS}" -ne 0 ]; then
+            python -c '
+          import pathlib, re, sys
+          lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          pat = re.compile(r"(fatal error|error [A-Z]+\d+:|FAILED:|ninja: error|LINK : fatal error)", re.I)
+          ctx, seen = [], set()
+          for i, l in enumerate(lines):
+              if pat.search(l):
+                  for j in range(max(0, i - 1), min(len(lines), i + 4)):
+                      if j not in seen:
+                          seen.add(j)
+                          ctx.append(lines[j])
+          body = "\n".join(ctx) if ctx else "\n".join(lines[-60:])
+          esc = body[:3500].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=Windows Build Failure::{esc}")
+          ' "${LOG_FILE}"
+            exit "${STATUS}"
+          fi
+          STATS="$(ccache --show-stats)"
+          echo "${STATS}"
+          ESC="${STATS//%/%25}"
+          ESC="${ESC//$'\r'/%0D}"
+          ESC="${ESC//$'\n'/%0A}"
+          echo "::notice title=Windows ccache stats::${ESC}"
 
       - name: Fetch OpenGFX and OpenSFX base sets
         shell: bash

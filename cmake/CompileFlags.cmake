@@ -11,9 +11,11 @@ macro(compile_flags)
         if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             add_compile_options(
                 /Zc:preprocessor # Needed for __VA_OPT__() in macros.
-                /MP # Enable multi-threaded compilation.
                 /FC # Display the full path of source code files passed to the compiler in diagnostics.
             )
+            if(NOT CMAKE_CXX_COMPILER_LAUNCHER)
+                add_compile_options(/MP) # Enable multi-threaded compilation for MSBuild.
+            endif()
         endif()
     endif()
 

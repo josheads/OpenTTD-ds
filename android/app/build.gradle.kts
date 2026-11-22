@@ -15,6 +15,24 @@ val configuredNdkVersion = (project.findProperty("ndkVersion") as String?)
     ?.takeIf { it.isNotEmpty() }
     ?: "27.2.12479018"
 
+val depsCacheDirProp = (project.findProperty("depsCacheDir") as String?)?.trim()
+val resolvedDepsCacheDir = depsCacheDirProp
+    ?.takeIf { it.isNotEmpty() }
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.isDirectory }
+    ?.canonicalFile
+    ?.absolutePath
+    ?.replace('\\', '/')
+
+val ccacheExecutableProp = (project.findProperty("ccacheExecutable") as String?)?.trim()
+val resolvedCcacheExecutable = ccacheExecutableProp
+    ?.takeIf { it.isNotEmpty() }
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.isFile }
+    ?.canonicalFile
+    ?.absolutePath
+    ?.replace('\\', '/')
+
 val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
@@ -52,6 +70,18 @@ android {
                         "-DOPTION_FETCH_DEPS=ON"
                     )
                 )
+                if (resolvedDepsCacheDir != null) {
+                    arguments.add("-DOPENTTD_DEPS_CACHE_DIR=$resolvedDepsCacheDir")
+                }
+                if (resolvedCcacheExecutable != null) {
+                    arguments.addAll(
+                        listOf(
+                            "-DCMAKE_C_COMPILER_LAUNCHER=$resolvedCcacheExecutable",
+                            "-DCMAKE_CXX_COMPILER_LAUNCHER=$resolvedCcacheExecutable",
+                            "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON"
+                        )
+                    )
+                }
                 // Explicitly include SDL3-shared alongside openttd (libmain.so) so AGP
                 // always builds and packages both libSDL3.so and libmain.so into the APK.
                 targets.addAll(listOf("openttd", "SDL3-shared"))
