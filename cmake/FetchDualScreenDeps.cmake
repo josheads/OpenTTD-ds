@@ -34,6 +34,7 @@ if(NOT OPTION_DEDICATED AND (ANDROID OR OPTION_DUAL_SCREEN) AND NOT SDL3_FOUND)
     if(ANDROID)
         set(SDL_SHARED ON CACHE BOOL "" FORCE)
         set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+        set(SDL_ANDROID_JAR OFF CACHE BOOL "" FORCE)
         set(_openttd_sdl_shared ON)
     else()
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
@@ -67,11 +68,15 @@ endif()
 # Ensure all compression / image / font static libs build statically.
 set(BUILD_SHARED_LIBS OFF)
 
+# Prevent third-party FetchContent subprojects (zlib, libpng, freetype) from registering
+# top-level install/export rules (libpng's install(TARGETS ${PNG_BIN_TARGETS}) fails when
+# PNG_SHARED=OFF and PNG_TOOLS=OFF if SKIP_INSTALL_ALL is not set).
+set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+
 # 2. ZLIB (Android NDK provides zlib; desktop builds without vcpkg fetch it)
 if(NOT ANDROID AND NOT ZLIB_FOUND)
     message(STATUS "Fetching zlib (v1.3.1) via FetchContent...")
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
         zlib
@@ -145,7 +150,6 @@ if(NOT PNG_FOUND)
     set(PNG_TESTS OFF CACHE BOOL "" FORCE)
     set(PNG_TOOLS OFF CACHE BOOL "" FORCE)
     set(PNG_FRAMEWORK OFF CACHE BOOL "" FORCE)
-    set(PNG_EXECUTABLES OFF CACHE BOOL "" FORCE)
     set(PNG_HARDWARE_OPTIMIZATIONS ON CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
@@ -169,6 +173,7 @@ endif()
 # 5. FreeType (enabled on Android for scalable UI text rendering without Fontconfig)
 if(ANDROID AND NOT OPTION_DEDICATED AND NOT Freetype_FOUND AND NOT FREETYPE_FOUND)
     message(STATUS "Fetching FreeType (VER-2-13-3) via FetchContent...")
+    set(DISABLE_FORCE_DEBUG_POSTFIX ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
