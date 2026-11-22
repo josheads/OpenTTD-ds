@@ -6,3 +6,12 @@ docs/gamedocs/*
 docs/source/*
 /out
 /vcpkg_installed
+/build-win/
+/build-tools/
+/build-android/
+/baseset-cache/
+/android/.gradle/
+/android/app/build/
+/android/app/.cxx/
+/android/local.properties
+/android/app/src/main/assets/

@@ -16,6 +16,10 @@
 #include <time.h>
 #include <signal.h>
 
+#if defined(__ANDROID__) && defined(WITH_SDL3)
+#include <SDL3/SDL_main.h>
+#endif
+
 #include "../../safeguards.h"
 
 int CDECL main(int argc, char *argv[])

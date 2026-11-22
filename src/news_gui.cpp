@@ -41,6 +41,9 @@
 #include "widgets/news_widget.h"
 
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -370,6 +373,13 @@ struct NewsWindow : Window {
 		const Window *w = FindWindowByClass(WindowClass::NetworkChat);
 		this->chat_height = (w != nullptr) ? w->height : 0;
 		this->status_height = FindWindowById(WindowClass::Statusbar, 0)->height;
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			if (const Window *ab = FindWindowById(WindowClass::DsActionBar, 0); ab != nullptr) {
+				this->status_height += ab->height;
+			}
+		}
+#endif
 
 		this->flags.Set(WindowFlag::DisableVpScroll);
 
@@ -435,6 +445,11 @@ struct NewsWindow : Window {
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			return { 0, DualScreen::GetBottomOriginY() + DualScreen::GetBottomHeight() };
+		}
+#endif
 		Point pt = { 0, _screen.height };
 		return pt;
 	}
@@ -656,7 +671,11 @@ struct NewsWindow : Window {
 	 * The interval of 210ms is chosen to maintain 15ms at normal zoom: 210 / GetCharacterHeight(FontSize::Normal) = 15ms.
 	 */
 	const IntervalTimer<TimerWindow> scroll_interval = {std::chrono::milliseconds(210) / GetCharacterHeight(FontSize::Normal), [this](uint count) {
-		int newtop = std::max(this->top - 2 * static_cast<int>(count), _screen.height - this->height - this->status_height - this->chat_height);
+		int bottom_edge = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) bottom_edge = DualScreen::GetBottomOriginY() + DualScreen::GetBottomHeight();
+#endif
+		int newtop = std::max(this->top - 2 * static_cast<int>(count), bottom_edge - this->height - this->status_height - this->chat_height);
 		this->SetWindowTop(newtop);
 	}};
 

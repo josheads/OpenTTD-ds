@@ -231,7 +231,7 @@ using namespace std::literals::string_view_literals;
 #endif
 
 /* Define the the platforms that use XDG */
-#if defined(WITH_PERSONAL_DIR) && defined(UNIX) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#if defined(WITH_PERSONAL_DIR) && defined(UNIX) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
 #	define USE_XDG
 #endif
 

@@ -28,6 +28,9 @@
 #include "table/animcursors.h"
 #include "table/string_colours.h"
 #include "table/sprites.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -1805,8 +1808,16 @@ void SortResolutions()
  */
 static int GetTargetScale(float width, float height)
 {
-	float xs = _screen.width / width;
-	float ys = _screen.height / height;
+	int ref_w = _screen.width;
+	int ref_h = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		ref_w = DualScreen::GetBottomWidth();
+		ref_h = DualScreen::GetBottomHeight();
+	}
+#endif
+	float xs = ref_w / width;
+	float ys = ref_h / height;
 	int scale = std::min(xs, ys) * 100;
 	/* Round down scaling to 25% increments and clamp to limits. */
 	return Clamp((scale / 25) * 25, MIN_INTERFACE_SCALE, MAX_INTERFACE_SCALE);

@@ -743,6 +743,24 @@ enum class WindowClass : uint16_t {
 	 */
 	Help,
 
+	/**
+	 * Dual-screen bottom command desk backdrop; %Window numbers:
+	 *   - 0
+	 */
+	BottomDesk,
+
+	/**
+	 * Dual-screen bottom quick action bar; %Window numbers:
+	 *   - 0
+	 */
+	DsActionBar,
+
+	/**
+	 * Dual-screen bottom precision trackpad overlay; %Window numbers:
+	 *   - 0
+	 */
+	DsTrackpad,
+
 	Invalid = 0xFFFF, ///< Invalid window.
 };
 

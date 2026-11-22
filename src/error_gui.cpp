@@ -25,6 +25,9 @@
 
 #include "table/sprites.h"
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -137,6 +140,12 @@ public:
 	{
 		/* Position (0, 0) given, center the window. */
 		if (this->position.x == 0 && this->position.y == 0) {
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				Rect area = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+				return { area.left + ((area.Width() - sm_width) >> 1), area.top + ((area.Height() - sm_height) >> 1) };
+			}
+#endif
 			Point pt = {(_screen.width - sm_width) >> 1, (_screen.height - sm_height) >> 1};
 			return pt;
 		}
@@ -150,7 +159,14 @@ public:
 		pt.x = _cursor.pos.x - sm_width / 2;
 		pt.y = _cursor.pos.y - (distance_to_cursor + sm_height);
 
-		if (pt.y < GetMainViewTop()) {
+		int min_top = GetMainViewTop();
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Rect area = DualScreen::GetWorkArea(DualScreen::GetScreenAtPoint(_cursor.pos.x, _cursor.pos.y));
+			min_top = area.top;
+		}
+#endif
+		if (pt.y < min_top) {
 			/* Window didn't fit above cursor, so place it below. */
 			pt.y = _cursor.pos.y + distance_to_cursor;
 		}

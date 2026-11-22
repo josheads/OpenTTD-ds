@@ -74,6 +74,9 @@
 #include "table/strings.h"
 
 #include "dropdown_common_type.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -2016,8 +2019,24 @@ struct MainToolbarWindow : Window {
 		DoZoomInOutWindow(ZOOM_NONE, this);
 	}
 
+	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
+	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			return { 0, DualScreen::GetBottomOriginY() };
+		}
+#endif
+		return { 0, 0 };
+	}
+
 	void FindWindowPlacementAndResize(int, int def_height, bool allow_resize) override
 	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Window::FindWindowPlacementAndResize(std::min<int>(_toolbar_width, DualScreen::GetBottomWidth()), def_height, allow_resize);
+			return;
+		}
+#endif
 		Window::FindWindowPlacementAndResize(_toolbar_width, def_height, allow_resize);
 	}
 
@@ -2370,8 +2389,24 @@ struct ScenarioEditorToolbarWindow : Window {
 		DoZoomInOutWindow(ZOOM_NONE, this);
 	}
 
+	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
+	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			return { 0, DualScreen::GetBottomOriginY() };
+		}
+#endif
+		return { 0, 0 };
+	}
+
 	void FindWindowPlacementAndResize(int, int def_height, bool allow_resize) override
 	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Window::FindWindowPlacementAndResize(std::min<int>(_toolbar_width, DualScreen::GetBottomWidth()), def_height, allow_resize);
+			return;
+		}
+#endif
 		Window::FindWindowPlacementAndResize(_toolbar_width, def_height, allow_resize);
 	}
 

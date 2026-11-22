@@ -27,6 +27,12 @@ if(NOT OPTION_DEDICATED)
     )
 
     add_files(
+        sdl3_ds_v.cpp
+        sdl3_ds_v.h
+        CONDITION SDL3_FOUND AND OPTION_DUAL_SCREEN
+    )
+
+    add_files(
         sdl3_opengl_v.cpp
         sdl3_opengl_v.h
         CONDITION SDL3_FOUND AND OPENGL_FOUND

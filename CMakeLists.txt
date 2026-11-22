@@ -159,6 +159,9 @@ if(NOT OPTION_DEDICATED)
     find_package(OpusFile)
     find_package(Soxr)
 endif()
+
+include(FetchDualScreenDeps)
+
 if(APPLE)
     enable_language(OBJCXX)
 
@@ -170,7 +173,7 @@ if(APPLE)
     find_library(QUARTZCORE_LIBRARY QuartzCore)
 endif()
 
-if(NOT EMSCRIPTEN AND NOT OPTION_DEDICATED)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OPTION_DEDICATED)
     find_package(OpenGL COMPONENTS OpenGL)
 endif()
 
@@ -243,9 +246,15 @@ include_directories(${CMAKE_SOURCE_DIR}/src/3rdparty/squirrel/include)
 include(MSVCFilters)
 
 add_library(openttd_lib OBJECT ${GENERATED_SOURCE_FILES})
-add_executable(openttd WIN32)
-add_executable(openttd_test)
-set_target_properties(openttd PROPERTIES OUTPUT_NAME "${BINARY_NAME}")
+if(ANDROID)
+    set_target_properties(openttd_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    add_library(openttd SHARED)
+    set_target_properties(openttd PROPERTIES OUTPUT_NAME "main")
+else()
+    add_executable(openttd WIN32)
+    add_executable(openttd_test)
+    set_target_properties(openttd PROPERTIES OUTPUT_NAME "${BINARY_NAME}")
+endif()
 # All other files are added via target_sources()
 
 if(MSVC)
@@ -288,13 +297,19 @@ target_link_libraries(openttd
     openttd::basesets
 )
 
-target_link_libraries(openttd_test PRIVATE openttd_lib)
 if(ANDROID)
-    target_link_libraries(openttd_test PRIVATE log)
+    target_link_libraries(openttd_lib android log)
 endif()
 
-include(Catch)
-catch_discover_tests(openttd_test)
+if(TARGET openttd_test)
+    target_link_libraries(openttd_test PRIVATE openttd_lib)
+    if(ANDROID)
+        target_link_libraries(openttd_test PRIVATE log)
+    endif()
+
+    include(Catch)
+    catch_discover_tests(openttd_test)
+endif()
 
 if(HAIKU)
     target_link_libraries(openttd_lib "be" "network" "midi")
@@ -463,12 +478,14 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     add_definitions(-DPOINTER_IS_64BIT)
 endif()
 
-enable_testing()
+if(NOT ANDROID)
+    enable_testing()
 
-add_subdirectory(regression)
+    add_subdirectory(regression)
 
-if(APPLE OR WIN32)
-    find_package(Pandoc)
+    if(APPLE OR WIN32)
+        find_package(Pandoc)
+    endif()
+
+    include(InstallAndPackage)
 endif()
-
-include(InstallAndPackage)

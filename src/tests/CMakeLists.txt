@@ -1,4 +1,9 @@
 add_test_files(
+    dual_screen.cpp
+    CONDITION OPTION_DUAL_SCREEN
+)
+
+add_test_files(
     alternating_iterator.cpp
     bitmath_func.cpp
     enum_over_optimisation.cpp

@@ -26,6 +26,9 @@
 #include "table/strings.h"
 
 #include "dropdown_common_type.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -291,9 +294,23 @@ struct DropdownWindow : Window {
 		/* Width should match at least the width of the parent widget. */
 		widget_dim.width = std::max<uint>(widget_dim.width, button_rect.Width());
 
+		int scr_left = 0;
+		int scr_right_excl = _screen.width;
+		int scr_top = GetMainViewTop();
+		int scr_bot = GetMainViewBottom();
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Rect area = DualScreen::GetWorkArea(DualScreen::GetScreenAtPoint(button_rect.left, button_rect.top));
+			scr_left = area.left;
+			scr_right_excl = area.right + 1;
+			scr_top = area.top;
+			scr_bot = area.bottom + 1;
+		}
+#endif
+
 		/* Available height below (or above, if the dropdown is placed above the widget). */
-		uint available_height_below = std::max(GetMainViewBottom() - button_rect.bottom - 1, 0);
-		uint available_height_above = std::max(button_rect.top - 1 - GetMainViewTop(), 0);
+		uint available_height_below = std::max(scr_bot - button_rect.bottom - 1, 0);
+		uint available_height_above = std::max(button_rect.top - 1 - scr_top, 0);
 
 		/* Is it better to place the dropdown above the widget? */
 		if (widget_dim.height > available_height_below && available_height_above > available_height_below) {
@@ -308,12 +325,18 @@ struct DropdownWindow : Window {
 			this->GetWidget<NWidgetCore>(WID_DM_FILTER_PANEL)->GetParentWidget<NWidgetVertical>()->bottom_up = false;
 		}
 
+		int total_width = (int)(widget_dim.width + (list_dim.height > widget_dim.height ? NWidgetScrollbar::GetVerticalDimension().width : 0));
 		if (_current_text_dir == TD_RTL) {
 			/* In case the list is wider than the parent button, the list should be right aligned to the button and overflow to the left. */
-			this->position.x = button_rect.right + 1 - (int)(widget_dim.width + (list_dim.height > widget_dim.height ? NWidgetScrollbar::GetVerticalDimension().width : 0));
+			this->position.x = button_rect.right + 1 - total_width;
 		} else {
 			this->position.x = button_rect.left;
 		}
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			this->position.x = std::clamp(this->position.x, scr_left, std::max(scr_left, scr_right_excl - total_width));
+		}
+#endif
 
 		this->initial_dim = widget_dim;
 		this->items_dim = widget_dim;

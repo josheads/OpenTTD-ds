@@ -40,6 +40,9 @@
 #include "widgets/misc_widget.h"
 
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -620,8 +623,19 @@ struct TooltipsWindow : public Window
 		/* Find the free screen space between the main toolbar at the top, and the statusbar at the bottom.
 		 * Add a fixed distance 2 so the tooltip floats free from both bars.
 		 */
+		int scr_left = 0;
+		int scr_width = _screen.width;
 		int scr_top = GetMainViewTop() + 2;
 		int scr_bot = GetMainViewBottom() - 2;
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Rect area = DualScreen::GetWorkArea(DualScreen::GetScreenAtPoint(_cursor.pos.x, _cursor.pos.y));
+			scr_left = area.left;
+			scr_width = area.Width();
+			scr_top = area.top + 2;
+			scr_bot = area.bottom - 1;
+		}
+#endif
 
 		Point pt;
 
@@ -630,7 +644,7 @@ struct TooltipsWindow : public Window
 		 * go below window, flip it so it is shown above the cursor */
 		pt.y = SoftClamp(_cursor.pos.y + _cursor.total_size.y + _cursor.total_offs.y + 5, scr_top, scr_bot);
 		if (pt.y + sm_height > scr_bot) pt.y = std::min(_cursor.pos.y + _cursor.total_offs.y - 5, scr_bot) - sm_height;
-		pt.x = sm_width >= _screen.width ? 0 : SoftClamp(_cursor.pos.x - (sm_width >> 1), 0, _screen.width - sm_width);
+		pt.x = sm_width >= scr_width ? scr_left : SoftClamp(_cursor.pos.x - (sm_width >> 1), scr_left, scr_left + scr_width - sm_width);
 
 		return pt;
 	}
@@ -1107,6 +1121,15 @@ struct QueryWindow : public Window {
 	void FindWindowPlacementAndResize(int, int, bool) override
 	{
 		/* Position query window over the calling window, ensuring it's within screen bounds. */
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Rect area = DualScreen::GetWorkArea(DualScreen::GetScreenAtPoint(parent->left + parent->width / 2, parent->top + parent->height / 2));
+			this->left = SoftClamp(parent->left + (parent->width / 2) - (this->width / 2), area.left, std::max(area.left, area.right + 1 - this->width));
+			this->top = SoftClamp(parent->top + (parent->height / 2) - (this->height / 2), area.top, std::max(area.top, area.bottom + 1 - this->height));
+			this->SetDirty();
+			return;
+		}
+#endif
 		this->left = SoftClamp(parent->left + (parent->width / 2) - (this->width / 2), 0, _screen.width - this->width);
 		this->top = SoftClamp(parent->top + (parent->height / 2) - (this->height / 2), 0, _screen.height - this->height);
 		this->SetDirty();

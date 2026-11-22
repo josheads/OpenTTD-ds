@@ -6,7 +6,7 @@ macro(compile_flags)
     if(MSVC)
         # "If /Zc:rvalueCast is specified, the compiler follows section 5.4 of the
         # C++11 standard". We need C++11 for the way we use threads.
-        add_compile_options(/Zc:rvalueCast)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:rvalueCast>)
 
         if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
             add_compile_options(
@@ -70,12 +70,12 @@ macro(compile_flags)
             -Wformat-security
             -Wformat=2
             -Winit-self
-            -Wnon-virtual-dtor
-            -Wsuggest-override
+            $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
+            $<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>
 
             # Prevent optimisation supposing enums are in a range specified by the standard
             # For details, see http://gcc.gnu.org/PR43680 and PR#5246.
-            -fno-strict-enums
+            $<$<COMPILE_LANGUAGE:CXX>:-fno-strict-enums>
         )
 
         # Ninja processes the output so the output from the compiler

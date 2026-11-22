@@ -56,6 +56,14 @@ add_files(
 )
 
 add_files(
+    dual_screen.cpp
+    dual_screen.h
+    dual_screen_gui.cpp
+    dual_screen_gui.h
+    CONDITION OPTION_DUAL_SCREEN
+)
+
+add_files(
     aircraft.h
     aircraft_cmd.cpp
     aircraft_cmd.h

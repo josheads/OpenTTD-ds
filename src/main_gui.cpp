@@ -42,6 +42,10 @@
 
 #include "table/sprites.h"
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#include "dual_screen_gui.h"
+#endif
 
 #include "safeguards.h"
 
@@ -211,7 +215,14 @@ struct MainWindow : Window
 	{
 		this->InitNested(0);
 		this->flags.Reset(WindowFlag::WhiteBorder);
-		ResizeWindow(this, _screen.width, _screen.height);
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			ResizeWindow(this, DualScreen::GetTopWidth() - this->width, DualScreen::GetTopHeight() - this->height, false);
+		} else
+#endif
+		{
+			ResizeWindow(this, _screen.width, _screen.height);
+		}
 
 		NWidgetViewport *nvp = this->GetWidget<NWidgetViewport>(WID_M_VIEWPORT);
 		nvp->InitializeViewport(this, TileXY(32, 32), ScaleZoomGUI(ZoomLevel::Viewport));
@@ -562,6 +573,9 @@ void SetupColoursAndInitialWindow()
 	switch (_game_mode) {
 		default: NOT_REACHED();
 		case GameMode::Menu:
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) DualScreen::ShowBottomCommandDesk();
+#endif
 			ShowSelectGameWindow();
 			break;
 
@@ -580,9 +594,13 @@ void ShowVitalWindows()
 	AllocateToolbar();
 
 	/* Status bad only for normal games */
-	if (_game_mode == GameMode::Editor) return;
+	if (_game_mode != GameMode::Editor) {
+		ShowStatusBar();
+	}
 
-	ShowStatusBar();
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) DualScreen::ShowBottomCommandDesk();
+#endif
 }
 
 /**

@@ -1,4 +1,8 @@
 function(_add_files_tgt tgt)
+    if(NOT TARGET ${tgt})
+        return()
+    endif()
+
     cmake_parse_arguments(PARAM "" "" "CONDITION" ${ARGN})
     set(PARAM_FILES "${PARAM_UNPARSED_ARGUMENTS}")
 

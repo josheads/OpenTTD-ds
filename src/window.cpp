@@ -44,6 +44,10 @@
 #include "widgets/osk_widget.h"
 
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#include "dual_screen_gui.h"
+#endif
 
 #include "safeguards.h"
 
@@ -1365,6 +1369,12 @@ static uint GetWindowZPriority(WindowClass wc)
 	assert(wc != WindowClass::Invalid);
 
 	uint z_priority = 0;
+#ifdef WITH_DUAL_SCREEN
+	if (wc == WindowClass::MainWindow) return 0;
+	if (wc == WindowClass::BottomDesk) return 1;
+	if (wc == WindowClass::SmallMap && DualScreen::IsActive()) return 2;
+	z_priority = 2;
+#endif
 
 	switch (wc) {
 		case WindowClass::ToolTips:
@@ -1390,6 +1400,7 @@ static uint GetWindowZPriority(WindowClass wc)
 
 		case WindowClass::MainToolbar:
 		case WindowClass::Statusbar:
+		case WindowClass::DsActionBar:
 			++z_priority;
 			[[fallthrough]];
 
@@ -1418,6 +1429,10 @@ static uint GetWindowZPriority(WindowClass wc)
 		case WindowClass::ScriptList:
 		case WindowClass::ScriptSettings:
 		case WindowClass::Textfile:
+			++z_priority;
+			[[fallthrough]];
+
+		case WindowClass::DsTrackpad:
 			++z_priority;
 			[[fallthrough]];
 
@@ -1522,6 +1537,68 @@ void Window::InitializePositionSize(int x, int y, int sm_width, int sm_height)
  */
 void Window::FindWindowPlacementAndResize(int def_width, int def_height, bool allow_resize)
 {
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive() && this->window_class != WindowClass::MainWindow) {
+		DualScreen::ScreenTarget target = (this->left == 0 && this->top == 0)
+			? DualScreen::GetDefaultScreenForWindow(this->window_class)
+			: DualScreen::GetScreenAtPoint(this->left, this->top);
+		Rect scr = DualScreen::GetScreenRect(target);
+		Rect area = DualScreen::GetWorkArea(target);
+		bool is_fixed_bar = (this->window_class == WindowClass::BottomDesk ||
+			this->window_class == WindowClass::MainToolbar ||
+			this->window_class == WindowClass::Statusbar ||
+			this->window_class == WindowClass::DsActionBar ||
+			this->window_class == WindowClass::News);
+		int min_top = is_fixed_bar ? scr.top : area.top;
+
+		/* Place onto target screen before ResizeWindow so screen-bounds clamping uses target's width/height. */
+		if (this->left == 0 && this->top == 0 && target == DualScreen::ScreenTarget::Bottom) {
+			if (this->viewport != nullptr) {
+				this->viewport->left += scr.left - this->left;
+				this->viewport->top += min_top - this->top;
+			}
+			this->left = scr.left;
+			this->top = min_top;
+		}
+
+		if (allow_resize) {
+			def_width = std::max(def_width, this->width);
+			def_height = std::max(def_height, this->height);
+			if (this->width != def_width || this->height != def_height) {
+				int enlarge_x = std::max(std::min(def_width - this->width, area.Width() - this->width), 0);
+				int enlarge_y = std::max(std::min(def_height - this->height, area.Height() - this->height), 0);
+
+				if (this->resize.step_width > 1) enlarge_x -= enlarge_x % (int)this->resize.step_width;
+				if (this->resize.step_height > 1) enlarge_y -= enlarge_y % (int)this->resize.step_height;
+
+				ResizeWindow(this, enlarge_x, enlarge_y, true, false);
+			} else {
+				this->OnResize();
+			}
+		}
+
+		int nx = this->left;
+		int ny = this->top;
+
+		if (nx + this->width > scr.right + 1) nx -= (nx + this->width - (scr.right + 1));
+		nx = std::max(nx, scr.left);
+
+		int max_bottom_excl = is_fixed_bar ? (scr.bottom + 1) : (area.bottom + 1);
+		if (!is_fixed_bar && ny + this->height > max_bottom_excl) ny = max_bottom_excl - this->height;
+		ny = std::max(ny, min_top);
+
+		if (this->viewport != nullptr) {
+			this->viewport->left += nx - this->left;
+			this->viewport->top += ny - this->top;
+		}
+		this->left = nx;
+		this->top = ny;
+
+		this->SetDirty();
+		return;
+	}
+#endif
+
 	if (allow_resize) {
 		def_width  = std::max(def_width,  this->width); // Don't allow default size to be smaller than smallest size
 		def_height = std::max(def_height, this->height);
@@ -1586,16 +1663,48 @@ void Window::FindWindowPlacementAndResize(int def_width, int def_height, bool al
  * @param pos     If rectangle is good, use this parameter to return the top-left corner of the new window
  * @return Boolean indication that the rectangle is a good place for the new window
  */
+static bool ShouldIgnoreWindowForAutoPlace(const Window *w)
+{
+	if (w->window_class == WindowClass::MainWindow) return true;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		switch (w->window_class) {
+			case WindowClass::BottomDesk:
+			case WindowClass::MainToolbar:
+			case WindowClass::Statusbar:
+			case WindowClass::DsActionBar:
+			case WindowClass::SmallMap:
+				return true;
+			default:
+				break;
+		}
+	}
+#endif
+	return false;
+}
+
 static bool IsGoodAutoPlace1(int left, int top, int width, int height, int toolbar_y, Point &pos)
 {
 	int right  = width + left;
 	int bottom = height + top;
 
-	if (left < 0 || top < toolbar_y || right > _screen.width || bottom > _screen.height) return false;
+	int min_x = 0;
+	int max_x = _screen.width;
+	int max_y = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		Rect area = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+		min_x = area.left;
+		max_x = area.right + 1;
+		max_y = area.bottom + 1;
+	}
+#endif
+
+	if (left < min_x || top < toolbar_y || right > max_x || bottom > max_y) return false;
 
 	/* Make sure it is not obscured by any window. */
 	for (const Window *w : Window::Iterate()) {
-		if (w->window_class == WindowClass::MainWindow) continue;
+		if (ShouldIgnoreWindowForAutoPlace(w)) continue;
 
 		if (right > w->left &&
 				w->left + w->width > left &&
@@ -1626,21 +1735,31 @@ static bool IsGoodAutoPlace2(int left, int top, int width, int height, int toolb
 {
 	bool rtl = _current_text_dir == TD_RTL;
 
+	int max_x = _screen.width;
+	int max_y = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		Rect area = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+		max_x = area.right + 1;
+		max_y = area.bottom + 1;
+	}
+#endif
+
 	/* Left part of the rectangle may be at most 1/4 off-screen,
 	 * right part of the rectangle may be at most 1/2 off-screen
 	 */
 	if (rtl) {
-		if (left < -(width >> 1) || left > _screen.width - (width >> 2)) return false;
+		if (left < -(width >> 1) || left > max_x - (width >> 2)) return false;
 	} else {
-		if (left < -(width >> 2) || left > _screen.width - (width >> 1)) return false;
+		if (left < -(width >> 2) || left > max_x - (width >> 1)) return false;
 	}
 
 	/* Bottom part of the rectangle may be at most 1/4 off-screen */
-	if (top < toolbar_y || top > _screen.height - (height >> 2)) return false;
+	if (top < toolbar_y || top > max_y - (height >> 2)) return false;
 
 	/* Make sure it is not obscured by any window. */
 	for (const Window *w : Window::Iterate()) {
-		if (w->window_class == WindowClass::MainWindow) continue;
+		if (ShouldIgnoreWindowForAutoPlace(w)) continue;
 
 		if (left + width > w->left &&
 				w->left + w->width > left &&
@@ -1669,15 +1788,25 @@ static Point GetAutoPlacePosition(int width, int height)
 
 	/* First attempt, try top-left of the screen */
 	const Window *main_toolbar = FindWindowByClass(WindowClass::MainToolbar);
-	const int toolbar_y =  main_toolbar != nullptr ? main_toolbar->height : 0;
-	if (IsGoodAutoPlace1(rtl ? _screen.width - width : 0, toolbar_y, width, height, toolbar_y, pt)) return pt;
+	int start_x = 0;
+	int end_x = _screen.width;
+	int toolbar_y = main_toolbar != nullptr ? main_toolbar->height : 0;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		Rect area = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+		start_x = area.left;
+		end_x = area.right + 1;
+		toolbar_y = area.top;
+	}
+#endif
+	if (IsGoodAutoPlace1(rtl ? end_x - width : start_x, toolbar_y, width, height, toolbar_y, pt)) return pt;
 
 	/* Second attempt, try around all existing windows.
 	 * The new window must be entirely on-screen, and not overlap with an existing window.
 	 * Eight starting points are tried, two at each corner.
 	 */
 	for (const Window *w : Window::Iterate()) {
-		if (w->window_class == WindowClass::MainWindow) continue;
+		if (ShouldIgnoreWindowForAutoPlace(w)) continue;
 
 		if (IsGoodAutoPlace1(w->left + w->width,         w->top,                      width, height, toolbar_y, pt)) return pt;
 		if (IsGoodAutoPlace1(w->left            - width, w->top,                      width, height, toolbar_y, pt)) return pt;
@@ -1694,7 +1823,7 @@ static Point GetAutoPlacePosition(int width, int height)
 	 * Only four starting points are tried.
 	 */
 	for (const Window *w : Window::Iterate()) {
-		if (w->window_class == WindowClass::MainWindow) continue;
+		if (ShouldIgnoreWindowForAutoPlace(w)) continue;
 
 		if (IsGoodAutoPlace2(w->left + w->width, w->top,             width, height, toolbar_y, pt)) return pt;
 		if (IsGoodAutoPlace2(w->left    - width, w->top,             width, height, toolbar_y, pt)) return pt;
@@ -1705,7 +1834,7 @@ static Point GetAutoPlacePosition(int width, int height)
 	/* Fourth and final attempt, put window at diagonal starting from (0, toolbar_y), try multiples
 	 * of the closebox
 	 */
-	int left = rtl ? _screen.width - width : 0, top = toolbar_y;
+	int left = rtl ? end_x - width : start_x, top = toolbar_y;
 	int offset_x = rtl ? -(int)NWidgetLeaf::closebox_dimension.width : (int)NWidgetLeaf::closebox_dimension.width;
 	int offset_y = std::max<int>(NWidgetLeaf::closebox_dimension.height, GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.captiontext.Vertical());
 
@@ -1791,17 +1920,28 @@ static Point LocalGetWindowPlacement(const WindowDesc &desc, int16_t sm_width, i
 			 *  - Y position: closebox of parent + closebox of child + statusbar
 			 *  - X position: closebox on left/right, resizebox on right/left (depending on ltr/rtl)
 			 */
+			int scr_left = 0;
+			int scr_right_excl = _screen.width;
+			int scr_bottom_excl = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				Rect scr = DualScreen::GetScreenRect(DualScreen::GetScreenAtPoint(w->left, w->top));
+				scr_left = scr.left;
+				scr_right_excl = scr.right + 1;
+				scr_bottom_excl = scr.bottom + 1;
+			}
+#endif
 			int indent_y = std::max<int>(NWidgetLeaf::closebox_dimension.height, GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.captiontext.Vertical());
-			if (w->top + 3 * indent_y < _screen.height) {
+			if (w->top + 3 * indent_y < scr_bottom_excl) {
 				pt.y = w->top + indent_y;
 				int indent_close = NWidgetLeaf::closebox_dimension.width;
 				int indent_resize = NWidgetLeaf::resizebox_dimension.width;
 				if (_current_text_dir == TD_RTL) {
-					pt.x = std::max(w->left + w->width - default_width - indent_close, 0);
-					if (pt.x + default_width >= indent_close && pt.x + indent_resize <= _screen.width) return pt;
+					pt.x = std::max(w->left + w->width - default_width - indent_close, scr_left);
+					if (pt.x + default_width >= scr_left + indent_close && pt.x + indent_resize <= scr_right_excl) return pt;
 				} else {
-					pt.x = std::min(w->left + indent_close, _screen.width - default_width);
-					if (pt.x + default_width >= indent_resize && pt.x + indent_close <= _screen.width) return pt;
+					pt.x = std::min(w->left + indent_close, scr_right_excl - default_width);
+					if (pt.x + default_width >= scr_left + indent_resize && pt.x + indent_close <= scr_right_excl) return pt;
 				}
 			}
 		}
@@ -1815,11 +1955,27 @@ static Point LocalGetWindowPlacement(const WindowDesc &desc, int16_t sm_width, i
 			return GetAutoPlacePosition(default_width, default_height);
 
 		case WindowPosition::Center: // Centre the window horizontally
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				Rect area = DualScreen::GetWorkArea(DualScreen::GetDefaultScreenForWindow(desc.cls));
+				pt.x = area.left + (area.Width() - default_width) / 2;
+				pt.y = area.top + (area.Height() - default_height) / 2;
+				break;
+			}
+#endif
 			pt.x = (_screen.width - default_width) / 2;
 			pt.y = (_screen.height - default_height) / 2;
 			break;
 
 		case WindowPosition::Manual:
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive() && desc.cls != WindowClass::MainWindow) {
+				Rect area = DualScreen::GetWorkArea(DualScreen::GetDefaultScreenForWindow(desc.cls));
+				pt.x = area.left;
+				pt.y = area.top;
+				break;
+			}
+#endif
 			pt.x = 0;
 			pt.y = 0;
 			break;
@@ -2065,7 +2221,7 @@ enum class PreventHideDirection : uint8_t {
  * @param px   Previous horizontal base coordinate.
  * @param dir  If no room horizontally, move the rectangle to the indicated position.
  */
-static void PreventHiding(int *nx, int *ny, const Rect &rect, const Window *v, int px, PreventHideDirection dir)
+static void PreventHiding(int *nx, int *ny, const Rect &rect, const Window *v, int px, PreventHideDirection dir, int screen_left, int screen_right_excl)
 {
 	if (v == nullptr) return;
 
@@ -2080,18 +2236,18 @@ static void PreventHiding(int *nx, int *ny, const Rect &rect, const Window *v, i
 
 	/* Vertically, the rectangle is hidden behind v. */
 	if (*nx + rect.left + min_visible < v->left) { // At left of v.
-		if (v->left < min_visible) *ny = safe_y; // But enough room, force it to a safe position.
+		if (v->left < screen_left + min_visible) *ny = safe_y; // But enough room, force it to a safe position.
 		return;
 	}
 	if (*nx + rect.right - min_visible > v_right) { // At right of v.
-		if (v_right > _screen.width - min_visible) *ny = safe_y; // Not enough room, force it to a safe position.
+		if (v_right > screen_right_excl - min_visible) *ny = safe_y; // Not enough room, force it to a safe position.
 		return;
 	}
 
 	/* Horizontally also hidden, force movement to a safe area. */
-	if (px + rect.left < v->left && v->left >= min_visible) { // Coming from the left, and enough room there.
+	if (px + rect.left < v->left && v->left >= screen_left + min_visible) { // Coming from the left, and enough room there.
 		*nx = v->left - min_visible - rect.left;
-	} else if (px + rect.right > v_right && v_right <= _screen.width - min_visible) { // Coming from the right, and enough room there.
+	} else if (px + rect.right > v_right && v_right <= screen_right_excl - min_visible) { // Coming from the right, and enough room there.
 		*nx = v_right + min_visible - rect.right;
 	} else {
 		*ny = safe_y;
@@ -2114,13 +2270,35 @@ static void EnsureVisibleCaption(Window *w, int nx, int ny)
 
 		const int min_visible = caption_rect.Height();
 
-		/* Make sure the window doesn't leave the screen */
-		nx = Clamp(nx, min_visible - caption_rect.right, _screen.width - min_visible - caption_rect.left);
-		ny = Clamp(ny, 0, _screen.height - min_visible);
+		int scr_left = 0;
+		int scr_right_excl = _screen.width;
+		int scr_bottom_excl = _screen.height;
+		bool check_bottom_bars = true;
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			DualScreen::ScreenTarget target = DualScreen::GetScreenAtPoint(nx + caption_rect.left, ny + caption_rect.top);
+			Rect scr = DualScreen::GetScreenRect(target);
+			scr_left = scr.left;
+			scr_right_excl = scr.right + 1;
+			scr_bottom_excl = DualScreen::GetVirtualHeight();
+			check_bottom_bars = (target == DualScreen::ScreenTarget::Bottom);
+		}
+#endif
 
-		/* Make sure the title bar isn't hidden behind the main tool bar or the status bar. */
-		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::MainToolbar, 0), w->left, PreventHideDirection::Down);
-		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::Statusbar, 0), w->left, PreventHideDirection::Up);
+		/* Make sure the window doesn't leave the screen */
+		nx = Clamp(nx, scr_left + min_visible - caption_rect.right, scr_right_excl - min_visible - caption_rect.left);
+		ny = Clamp(ny, 0, scr_bottom_excl - min_visible);
+
+		/* Make sure the title bar isn't hidden behind the main tool bar, status bar, or DS action bar. */
+		if (check_bottom_bars) {
+			PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::MainToolbar, 0), w->left, PreventHideDirection::Down, scr_left, scr_right_excl);
+			PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::Statusbar, 0), w->left, PreventHideDirection::Up, scr_left, scr_right_excl);
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::DsActionBar, 0), w->left, PreventHideDirection::Up, scr_left, scr_right_excl);
+			}
+#endif
+		}
 	}
 
 	if (w->viewport != nullptr) {
@@ -2149,10 +2327,19 @@ void ResizeWindow(Window *w, int delta_x, int delta_y, bool clamp_to_screen, boo
 		if (clamp_to_screen) {
 			/* Determine the new right/bottom position. If that is outside of the bounds of
 			 * the resolution clamp it in such a manner that it stays within the bounds. */
+			int max_right_excl = _screen.width;
+			int max_bottom_excl = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				Rect scr = DualScreen::GetScreenRect(DualScreen::GetScreenAtPoint(w->left, w->top));
+				max_right_excl = scr.right + 1;
+				max_bottom_excl = scr.bottom + 1;
+			}
+#endif
 			int new_right  = w->left + w->width  + delta_x;
 			int new_bottom = w->top  + w->height + delta_y;
-			if (new_right  >= (int)_screen.width)  delta_x -= Ceil(new_right  - _screen.width,  std::max(1U, w->nested_root->resize_x));
-			if (new_bottom >= (int)_screen.height) delta_y -= Ceil(new_bottom - _screen.height, std::max(1U, w->nested_root->resize_y));
+			if (new_right  >= max_right_excl)  delta_x -= Ceil(new_right  - max_right_excl,  std::max(1U, w->nested_root->resize_x));
+			if (new_bottom >= max_bottom_excl) delta_y -= Ceil(new_bottom - max_bottom_excl, std::max(1U, w->nested_root->resize_y));
 		}
 
 		w->SetDirty();
@@ -2185,6 +2372,11 @@ void ResizeWindow(Window *w, int delta_x, int delta_y, bool clamp_to_screen, boo
  */
 int GetMainViewTop()
 {
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		return DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom).top;
+	}
+#endif
 	Window *w = FindWindowById(WindowClass::MainToolbar, 0);
 	return (w == nullptr) ? 0 : w->top + w->height;
 }
@@ -2196,6 +2388,11 @@ int GetMainViewTop()
  */
 int GetMainViewBottom()
 {
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		return DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom).bottom + 1;
+	}
+#endif
 	Window *w = FindWindowById(WindowClass::Statusbar, 0);
 	return (w == nullptr) ? _screen.height : w->top;
 }
@@ -2331,9 +2528,21 @@ static EventState HandleWindowDragging()
 			if (w->resize.step_width  == 0) x = 0;
 			if (w->resize.step_height == 0) y = 0;
 
-			/* Check the resize button won't go past the bottom of the screen */
-			if (w->top + w->height + y > _screen.height) {
-				y = _screen.height - w->height - w->top;
+			/* Check the resize button won't go past the right/bottom of the screen */
+			int max_right = _screen.width;
+			int max_bot = _screen.height;
+#ifdef WITH_DUAL_SCREEN
+			if (DualScreen::IsActive()) {
+				Rect scr = DualScreen::GetScreenRect(DualScreen::GetScreenAtPoint(w->left, w->top));
+				max_right = scr.right + 1;
+				max_bot = scr.bottom + 1;
+			}
+#endif
+			if (w->flags.Test(WindowFlag::SizingRight) && w->left + w->width + x > max_right) {
+				x = max_right - w->width - w->left;
+			}
+			if (w->top + w->height + y > max_bot) {
+				y = max_bot - w->height - w->top;
 			}
 
 			/* X and Y has to go by step.. calculate it.
@@ -3478,6 +3687,12 @@ void HideVitalWindows()
 {
 	CloseWindowById(WindowClass::MainToolbar, 0);
 	CloseWindowById(WindowClass::Statusbar, 0);
+#ifdef WITH_DUAL_SCREEN
+	DualScreen::SetActionBarHeight(0);
+	DualScreen::ClearTrackpadDragLock();
+	CloseWindowById(WindowClass::DsActionBar, 0);
+	CloseWindowById(WindowClass::DsTrackpad, 0);
+#endif
 }
 
 void ReInitWindow(Window *w, bool zoom_changed)
@@ -3530,14 +3745,21 @@ static int PositionWindow(Window *w, WindowClass clss, int setting)
 	}
 	if (w == nullptr) return 0;
 
+	int target_width = _screen.width;
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		target_width = DualScreen::GetBottomWidth();
+	}
+#endif
+
 	int old_left = w->left;
 	switch (setting) {
-		case 1:  w->left = (_screen.width - w->width) / 2; break;
-		case 2:  w->left = _screen.width - w->width; break;
+		case 1:  w->left = (target_width - w->width) / 2; break;
+		case 2:  w->left = target_width - w->width; break;
 		default: w->left = 0; break;
 	}
 	if (w->viewport != nullptr) w->viewport->left += w->left - old_left;
-	AddDirtyBlock(0, w->top, _screen.width, w->top + w->height); // invalidate the whole row
+	AddDirtyBlock(0, w->top, target_width, w->top + w->height); // invalidate the whole row
 	return w->left;
 }
 
@@ -3611,8 +3833,98 @@ void RelocateAllWindows(int neww, int newh)
 {
 	CloseWindowByClass(WindowClass::DropdownMenu);
 
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		int top_w = DualScreen::GetTopWidth();
+		int top_h = DualScreen::GetTopHeight();
+		int bot_w = DualScreen::GetBottomWidth();
+		int bot_y = DualScreen::GetBottomOriginY();
+		int bot_h = DualScreen::GetBottomHeight();
+
+		if (Window *wt = FindWindowById(WindowClass::MainToolbar, 0); wt != nullptr) {
+			wt->top = bot_y;
+			ResizeWindow(wt, std::min<int>(bot_w, _toolbar_width) - wt->width, 0, false);
+			wt->left = PositionMainToolbar(wt);
+		}
+
+		if (Window *ws = FindWindowById(WindowClass::Statusbar, 0); ws != nullptr) {
+			ResizeWindow(ws, std::min<int>(bot_w, _toolbar_width) - ws->width, 0, false);
+			ws->top = bot_y + bot_h - ws->height;
+			ws->left = PositionStatusbar(ws);
+		}
+
+		DualScreen::RelocateDualScreenWindows();
+
+		Rect bot_work = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+
+		for (Window *w : Window::Iterate()) {
+			int left = w->left;
+			int top = w->top;
+			switch (w->window_class) {
+				case WindowClass::MainWindow:
+					w->left = 0;
+					w->top = 0;
+					ResizeWindow(w, top_w - w->width, top_h - w->height, false);
+					continue;
+
+				case WindowClass::Bootstrap:
+				case WindowClass::Highscore:
+				case WindowClass::Endscreen:
+					w->left = 0;
+					w->top = 0;
+					ResizeWindow(w, top_w - w->width, top_h - w->height, false);
+					continue;
+
+				case WindowClass::BottomDesk:
+				case WindowClass::MainToolbar:
+				case WindowClass::Statusbar:
+				case WindowClass::DsActionBar:
+				case WindowClass::DsTrackpad:
+					continue;
+
+				case WindowClass::News:
+					top = bot_y + bot_h - w->height;
+					left = PositionNewsMessage(w);
+					break;
+
+				case WindowClass::NetworkChat:
+					ResizeWindow(w, std::min<int>(bot_w, _toolbar_width) - w->width, 0, false);
+					top = bot_work.bottom + 1 - w->height;
+					left = PositionNetworkChatWindow(w);
+					break;
+
+				case WindowClass::Console:
+					IConsoleResize(w);
+					continue;
+
+				default: {
+					DualScreen::ScreenTarget scr_target = DualScreen::GetScreenAtPoint(w->left + w->width / 2, w->top + w->height / 2);
+					Rect area = DualScreen::GetWorkArea(scr_target);
+					if (w->flags.Test(WindowFlag::Centred)) {
+						left = area.left + (area.Width() - w->width) / 2;
+						top = area.top + (area.Height() - w->height) / 2;
+						break;
+					}
+					Point clamped = DualScreen::ClampWindowToScreen(w->left, w->top, w->width, w->height, scr_target);
+					left = clamped.x;
+					top = clamped.y;
+					break;
+				}
+			}
+
+			EnsureVisibleCaption(w, left, top);
+		}
+		return;
+	}
+#endif
+
+#ifdef WITH_DUAL_SCREEN
+	DualScreen::RelocateDualScreenWindows();
+#endif
+
 	/* Reposition toolbar then status bar before other all windows. */
 	if (Window *wt = FindWindowById(WindowClass::MainToolbar, 0); wt != nullptr) {
+		wt->top = 0;
 		ResizeWindow(wt, std::min<uint>(neww, _toolbar_width) - wt->width, 0, false);
 		wt->left = PositionMainToolbar(wt);
 	}

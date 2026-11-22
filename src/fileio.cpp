@@ -25,6 +25,12 @@
 #endif
 #include <sys/stat.h>
 #include <filesystem>
+#ifdef __ANDROID__
+#include "os/android/android_ds_jni.h"
+#ifdef WITH_SDL3
+#include <SDL3/SDL.h>
+#endif
+#endif
 
 #include "safeguards.h"
 
@@ -740,6 +746,20 @@ bool DoScanWorkingDirectory()
  */
 static std::string GetHomeDir()
 {
+#ifdef __ANDROID__
+	std::string dir = AndroidDS::GetDataDir();
+#ifdef WITH_SDL3
+	if (dir.empty()) {
+		const char *ext = SDL_GetAndroidExternalStoragePath();
+		if (ext != nullptr && *ext != '\0') dir = ext;
+	}
+	if (dir.empty()) {
+		const char *intl = SDL_GetAndroidInternalStoragePath();
+		if (intl != nullptr && *intl != '\0') dir = intl;
+	}
+#endif
+	if (!dir.empty()) return dir;
+#endif
 #ifdef __HAIKU__
 	BPath path;
 	find_directory(B_USER_SETTINGS_DIRECTORY, &path);
@@ -760,6 +780,25 @@ static std::string GetHomeDir()
  */
 void DetermineBasePaths(std::string_view exe)
 {
+#ifdef __ANDROID__
+	std::string android_dir = GetHomeDir();
+	if (!android_dir.empty()) {
+		AppendPathSeparator(android_dir);
+		_searchpaths[Searchpath::PersonalDir] = android_dir;
+		_searchpaths[Searchpath::AutodownloadPersonalDir] = android_dir + "content_download" PATHSEP;
+		_searchpaths[Searchpath::WorkingDir] = android_dir;
+		_searchpaths[Searchpath::BinaryDir] = android_dir;
+		_searchpaths[Searchpath::SharedDir].clear();
+		_searchpaths[Searchpath::InstallationDir].clear();
+		_searchpaths[Searchpath::ApplicationBundleDir].clear();
+		_searchpaths[Searchpath::TransportTycoonDeluxeDir].clear();
+		_do_scan_working_directory = true;
+		if (chdir(android_dir.c_str()) != 0) {
+			/* Keep going using explicit searchpaths if chdir fails. */
+		}
+		return;
+	}
+#endif
 	std::string tmp;
 	const std::string homedir = GetHomeDir();
 #ifdef USE_XDG

@@ -28,6 +28,9 @@
 #include "../widgets/network_chat_widget.h"
 
 #include "table/strings.h"
+#ifdef WITH_DUAL_SCREEN
+#include "../dual_screen.h"
+#endif
 
 #include "../safeguards.h"
 
@@ -101,6 +104,22 @@ void NetworkReInitChatBoxSize()
 	_chatmsg_box.height  = MAX_CHAT_MESSAGES * (GetCharacterHeight(FontSize::Normal) + ScaleGUITrad(NETWORK_CHAT_LINE_SPACING)) + ScaleGUITrad(4);
 }
 
+static int GetChatOverlayWidth()
+{
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) return DualScreen::GetTopWidth();
+#endif
+	return _screen.width;
+}
+
+static int GetChatOverlayHeight()
+{
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) return DualScreen::GetTopHeight();
+#endif
+	return _screen.height;
+}
+
 /** Initialize all buffers of the chat visualisation. */
 void NetworkInitChatMessage()
 {
@@ -108,7 +127,7 @@ void NetworkInitChatMessage()
 
 	_chatmsg_list.clear();
 	_chatmsg_box.x       = ScaleGUITrad(10);
-	_chatmsg_box.width   = _settings_client.gui.network_chat_box_width_pct * _screen.width / 100;
+	_chatmsg_box.width   = _settings_client.gui.network_chat_box_width_pct * GetChatOverlayWidth() / 100;
 	NetworkReInitChatBoxSize();
 	_chatmessage_visible = false;
 }
@@ -116,6 +135,9 @@ void NetworkInitChatMessage()
 /** Hide the chatbox */
 void NetworkUndrawChatMessage()
 {
+	int scr_w = GetChatOverlayWidth();
+	int scr_h = GetChatOverlayHeight();
+
 	/* Sometimes we also need to hide the cursor
 	 *   This is because both textmessage and the cursor take a shot of the
 	 *   screen before drawing.
@@ -129,23 +151,23 @@ void NetworkUndrawChatMessage()
 	if (_cursor.visible &&
 			_cursor.draw_pos.x + _cursor.draw_size.x >= _chatmsg_box.x &&
 			_cursor.draw_pos.x <= _chatmsg_box.x + _chatmsg_box.width &&
-			_cursor.draw_pos.y + _cursor.draw_size.y >= _screen.height - _chatmsg_box.y - _chatmsg_box.height &&
-			_cursor.draw_pos.y <= _screen.height - _chatmsg_box.y) {
+			_cursor.draw_pos.y + _cursor.draw_size.y >= scr_h - _chatmsg_box.y - _chatmsg_box.height &&
+			_cursor.draw_pos.y <= scr_h - _chatmsg_box.y) {
 		UndrawMouseCursor();
 	}
 
 	if (_chatmessage_visible) {
 		Blitter *blitter = BlitterFactory::GetCurrentBlitter();
 		int x      = _chatmsg_box.x;
-		int y      = _screen.height - _chatmsg_box.y - _chatmsg_box.height;
+		int y      = scr_h - _chatmsg_box.y - _chatmsg_box.height;
 		int width  = _chatmsg_box.width;
 		int height = _chatmsg_box.height;
 		if (y < 0) {
-			height = std::max(height + y, std::min(_chatmsg_box.height, _screen.height));
+			height = std::max(height + y, std::min(_chatmsg_box.height, scr_h));
 			y = 0;
 		}
-		if (x + width >= _screen.width) {
-			width = _screen.width - x;
+		if (x + width >= scr_w) {
+			width = scr_w - x;
 		}
 		if (width <= 0 || height <= 0) return;
 
@@ -190,16 +212,19 @@ void NetworkDrawChatMessage()
 	/* Check if we have anything to draw at all */
 	if (!HaveChatMessages(show_all)) return;
 
+	int scr_w = GetChatOverlayWidth();
+	int scr_h = GetChatOverlayHeight();
+
 	int x      = _chatmsg_box.x;
-	int y      = _screen.height - _chatmsg_box.y - _chatmsg_box.height;
+	int y      = scr_h - _chatmsg_box.y - _chatmsg_box.height;
 	int width  = _chatmsg_box.width;
 	int height = _chatmsg_box.height;
 	if (y < 0) {
-		height = std::max(height + y, std::min(_chatmsg_box.height, _screen.height));
+		height = std::max(height + y, std::min(_chatmsg_box.height, scr_h));
 		y = 0;
 	}
-	if (x + width >= _screen.width) {
-		width = _screen.width - x;
+	if (x + width >= scr_w) {
+		width = scr_w - x;
 	}
 	if (width <= 0 || height <= 0) return;
 
@@ -218,8 +243,8 @@ void NetworkDrawChatMessage()
 
 	string_height = std::min<uint>(string_height, MAX_CHAT_MESSAGES * (GetCharacterHeight(FontSize::Normal) + NETWORK_CHAT_LINE_SPACING));
 
-	int top = _screen.height - _chatmsg_box.y - string_height - 2;
-	int bottom = _screen.height - _chatmsg_box.y - 2;
+	int top = scr_h - _chatmsg_box.y - string_height - 2;
+	int bottom = scr_h - _chatmsg_box.y - 2;
 	/* Paint a half-transparent box behind the chat messages */
 	GfxFillRect(_chatmsg_box.x, top - 2, _chatmsg_box.x + _chatmsg_box.width - 1, bottom,
 			PALETTE_TO_TRANSPARENT, FillRectMode::Recolour // black, but with some alpha for background
@@ -353,6 +378,12 @@ struct NetworkChatWindow : public Window {
 
 	Point OnInitialPosition([[maybe_unused]] int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
 	{
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			Rect area = DualScreen::GetWorkArea(DualScreen::ScreenTarget::Bottom);
+			return { area.left, area.bottom + 1 - sm_height };
+		}
+#endif
 		Point pt = { 0, _screen.height - sm_height - FindWindowById(WindowClass::Statusbar, 0)->height };
 		return pt;
 	}
