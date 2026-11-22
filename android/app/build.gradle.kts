@@ -3,12 +3,12 @@ plugins {
 }
 
 val hostBinaryDirProp = (project.findProperty("hostBinaryDir") as String?)?.trim()
-val resolvedHostBinaryDir = when {
-    hostBinaryDirProp.isNullOrEmpty() -> rootProject.file("../build-tools")
-    java.io.File(hostBinaryDirProp).isAbsolute -> java.io.File(hostBinaryDirProp)
-    rootProject.file(hostBinaryDirProp).exists() -> rootProject.file(hostBinaryDirProp)
-    else -> rootProject.file("../$hostBinaryDirProp")
-}.canonicalFile.absolutePath.replace('\\', '/')
+val resolvedHostBinaryDir = (if (hostBinaryDirProp.isNullOrEmpty()) {
+    rootProject.file("../build-tools")
+} else {
+    val candidate = rootProject.file(hostBinaryDirProp)
+    if (candidate.exists()) candidate else rootProject.file("../$hostBinaryDirProp")
+}).canonicalFile.absolutePath.replace('\\', '/')
 
 val configuredNdkVersion = (project.findProperty("ndkVersion") as String?)
     ?.trim()
