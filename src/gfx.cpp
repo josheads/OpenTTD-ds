@@ -1829,6 +1829,11 @@ static int GetTargetScale(float width, float height)
  */
 int GetAutomaticScale()
 {
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		return GetTargetScale(480, 360);
+	}
+#endif
 	return GetTargetScale(640, 480);
 }
 
@@ -1838,6 +1843,11 @@ int GetAutomaticScale()
  */
 int GetMaximumScale()
 {
+#ifdef WITH_DUAL_SCREEN
+	if (DualScreen::IsActive()) {
+		return GetTargetScale(380, 300);
+	}
+#endif
 	return GetTargetScale(480, 360);
 }
 

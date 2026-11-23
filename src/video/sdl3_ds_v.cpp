@@ -19,10 +19,13 @@
 #include "../core/utf8.hpp"
 #include "../dual_screen.h"
 #include "../dual_screen_gui.h"
+#include "../fileio_func.h"
+#include "../fontcache.h"
 #include "../framerate_type.h"
 #include "../hotkeys.h"
 #include "../network/network.h"
 #include "../settings_type.h"
+#include "../strings_func.h"
 #include "../tilehighlight_func.h"
 #include "../viewport_func.h"
 #include "../window_func.h"
@@ -219,6 +222,16 @@ void ReleaseTrackpadDragLockAtTopCursor()
 	DualScreen::InvalidateDualScreenControls();
 }
 
+void MigrateLegacyDualScreenScale(int smoke_test_frames)
+{
+	if (smoke_test_frames > 0) return;
+	if (FioCheckFileExists(".ds_scale_v2", Subdirectory::Base)) return;
+	FioFOpenFile(".ds_scale_v2", "w", Subdirectory::Base);
+	if (_gui_scale_cfg > 0 && _gui_scale_cfg <= 175) {
+		_gui_scale_cfg = -1;
+	}
+}
+
 #ifndef __ANDROID__
 float ParseFloatParam(const StringList &params, std::string_view key, float def_val)
 {
@@ -260,7 +273,18 @@ std::optional<std::string_view> VideoDriver_SDL_DS::Start(const StringList &para
 	this->cfg_bot_w = std::max(640, GetDriverParamInt(param, "bot_w", DualScreen::DEFAULT_BOTTOM_WIDTH));
 	this->cfg_bot_h = std::max(480, GetDriverParamInt(param, "bot_h", DualScreen::DEFAULT_BOTTOM_HEIGHT));
 #ifndef __ANDROID__
-	this->desktop_scale = std::clamp(ParseFloatParam(param, "scale", 0.60f), 0.35f, 1.50f);
+	if (auto scale_param = GetDriverParam(param, "scale"); scale_param.has_value() && !scale_param->empty()) {
+		this->desktop_scale = std::clamp(ParseFloatParam(param, "scale", 0.55f), 0.30f, 1.50f);
+	} else {
+		SDL_Rect usable{};
+		SDL_DisplayID pri = SDL_GetPrimaryDisplay();
+		if (pri != 0 && SDL_GetDisplayUsableBounds(pri, &usable) && usable.h > 0) {
+			float fit_h = static_cast<float>(usable.h - 72) / static_cast<float>(this->cfg_top_h + this->cfg_bot_h);
+			this->desktop_scale = std::clamp(fit_h, 0.45f, 0.75f);
+		} else {
+			this->desktop_scale = 0.55f;
+		}
+	}
 #endif
 	this->force_single = GetDriverParamBool(param, "single");
 	this->smoke_test_frames = std::max(0, GetDriverParamInt(param, "smoke_test_frames", 0));
@@ -274,7 +298,13 @@ std::optional<std::string_view> VideoDriver_SDL_DS::Start(const StringList &para
 	}
 #endif
 
+	if (dual_active) {
+		MigrateLegacyDualScreenScale(this->smoke_test_frames);
+	}
+
 	DualScreen::SetGeometry(this->cfg_top_w, this->cfg_top_h, this->cfg_bot_w, this->cfg_bot_h, dual_active);
+	FontCache::LoadFontCaches(FONTSIZES_ALL);
+	LoadStringWidthTable();
 
 	if (!this->CreateDisplayOutputs(dual_active)) {
 		this->DestroyAllOutputs();
@@ -468,15 +498,30 @@ void VideoDriver_SDL_DS::ReconfigureMode(bool dual_active)
 	_input_pressed.Reset({ControlInput::Left, ControlInput::Right});
 	_input_clicked.Reset(ControlInput::Left);
 
+	if (dual_active) {
+		MigrateLegacyDualScreenScale(this->smoke_test_frames);
+	}
+
 	DualScreen::SetGeometry(this->cfg_top_w, this->cfg_top_h, this->cfg_bot_w, this->cfg_bot_h, dual_active);
 	if (!dual_active) {
 		DualScreen::SetTrackpadMode(false);
+	}
+	int pre_scale = _gui_scale;
+	ZoomLevel pre_zoom = _gui_zoom;
+	if (was_dual != dual_active) {
+		FontCache::LoadFontCaches(FONTSIZES_ALL);
+		FontCache::ClearFontCaches(FONTSIZES_ALL);
+		LoadStringWidthTable();
 	}
 	this->CreateDisplayOutputs(dual_active);
 	this->AllocateBackingStore(this->cfg_top_w, this->cfg_top_h, this->cfg_bot_w, this->cfg_bot_h, dual_active);
 	CopyPalette(this->local_palette, true);
 	BlitterFactory::GetCurrentBlitter()->PostResize();
 	GameSizeChanged();
+	if (was_dual != dual_active && pre_scale == _gui_scale && pre_zoom == _gui_zoom) {
+		UpdateAllVirtCoords();
+		ReInitAllWindows(true);
+	}
 	if (dual_active) {
 		DualScreen::ShowBottomCommandDesk();
 		if (!was_dual) {
@@ -642,15 +687,43 @@ void VideoDriver_SDL_DS::CheckSmokeTestCompletion()
 	}
 
 	bool dual = DualScreen::IsActive();
-	bool ok = (top_varied > 0) && (!dual || (bot_varied > 0 && this->smoke_has_desk)) && this->smoke_has_ui && this->smoke_reconfig_ok;
+	bool windows_fit = true;
+	if (dual) {
+		for (const Window *w : Window::Iterate()) {
+			switch (w->window_class) {
+				case WindowClass::SelectGame:
+				case WindowClass::MainToolbar:
+				case WindowClass::Statusbar:
+				case WindowClass::DsActionBar:
+				case WindowClass::SmallMap:
+					if (w->width <= 0 || w->height <= 0 ||
+							w->width > this->cfg_bot_w || w->height > this->cfg_bot_h ||
+							w->left < 0 || w->left + w->width > this->cfg_bot_w ||
+							w->top < this->cfg_top_h || w->top + w->height > this->cfg_top_h + this->cfg_bot_h) {
+						Debug(Facility::Driver, Severity::Critical,
+							"SMOKE_TEST_WINDOW_OVERFLOW class={} pos=({},{}) size={}x{} bot={}x{} y0={}",
+							static_cast<int>(w->window_class), w->left, w->top, w->width, w->height,
+							this->cfg_bot_w, this->cfg_bot_h, this->cfg_top_h);
+						windows_fit = false;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+	bool ok = (top_varied > 0) && (!dual || (bot_varied > 0 && this->smoke_has_desk)) &&
+		this->smoke_has_ui && windows_fit && this->smoke_reconfig_ok;
 	if (this->smoke_test_reconfigure && this->smoke_reconfig_phase < 2) {
 		ok = false;
 	}
 	Debug(Facility::Driver, Severity::Critical,
-		"{} frames={} dual={} top_varied={} bot_varied={} desk={} ui={} reconfig={}",
+		"{} frames={} dual={} gui_scale={} top_varied={} bot_varied={} desk={} ui={} fit={} reconfig={}",
 		ok ? "SMOKE_TEST_OK" : "SMOKE_TEST_FAIL",
-		this->rendered_frames, dual ? 1 : 0, top_varied, bot_varied,
+		this->rendered_frames, dual ? 1 : 0, _gui_scale, top_varied, bot_varied,
 		this->smoke_has_desk ? 1 : 0, this->smoke_has_ui ? 1 : 0,
+		windows_fit ? 1 : 0,
 		this->smoke_test_reconfigure ? (this->smoke_reconfig_ok ? 1 : 0) : -1);
 	std::fflush(stderr);
 
@@ -1163,8 +1236,9 @@ void VideoDriver_SDL_DS::HandleGamepadButton(uint8_t button, bool pressed)
 			break;
 		case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
 			if (pressed) {
+				const int step = (this->cfg_top_h >= 1000) ? 18 : 12;
 				auto scr = DualScreen::GetScreenAtPoint(_cursor.pos.x, _cursor.pos.y);
-				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x - 12, _cursor.pos.y, scr);
+				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x - step, _cursor.pos.y, scr);
 				if (scr == DualScreen::ScreenTarget::Top) DualScreen::SetTopCursorPos(pt);
 				_cursor.UpdateCursorPosition(pt.x, pt.y);
 				HandleMouseEvents();
@@ -1172,8 +1246,9 @@ void VideoDriver_SDL_DS::HandleGamepadButton(uint8_t button, bool pressed)
 			break;
 		case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
 			if (pressed) {
+				const int step = (this->cfg_top_h >= 1000) ? 18 : 12;
 				auto scr = DualScreen::GetScreenAtPoint(_cursor.pos.x, _cursor.pos.y);
-				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x + 12, _cursor.pos.y, scr);
+				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x + step, _cursor.pos.y, scr);
 				if (scr == DualScreen::ScreenTarget::Top) DualScreen::SetTopCursorPos(pt);
 				_cursor.UpdateCursorPosition(pt.x, pt.y);
 				HandleMouseEvents();
@@ -1181,7 +1256,8 @@ void VideoDriver_SDL_DS::HandleGamepadButton(uint8_t button, bool pressed)
 			break;
 		case SDL_GAMEPAD_BUTTON_DPAD_UP:
 			if (pressed) {
-				int ny = std::max(0, _cursor.pos.y - 12);
+				const int step = (this->cfg_top_h >= 1000) ? 18 : 12;
+				int ny = std::max(0, _cursor.pos.y - step);
 				auto scr = DualScreen::GetScreenAtPoint(_cursor.pos.x, ny);
 				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x, ny, scr);
 				if (scr == DualScreen::ScreenTarget::Top) DualScreen::SetTopCursorPos(pt);
@@ -1191,7 +1267,8 @@ void VideoDriver_SDL_DS::HandleGamepadButton(uint8_t button, bool pressed)
 			break;
 		case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
 			if (pressed) {
-				int ny = std::min(_screen.height - 1, _cursor.pos.y + 12);
+				const int step = (this->cfg_top_h >= 1000) ? 18 : 12;
+				int ny = std::min(_screen.height - 1, _cursor.pos.y + step);
 				auto scr = DualScreen::GetScreenAtPoint(_cursor.pos.x, ny);
 				Point pt = DualScreen::ClampPointToScreen(_cursor.pos.x, ny, scr);
 				if (scr == DualScreen::ScreenTarget::Top) DualScreen::SetTopCursorPos(pt);
@@ -1350,13 +1427,13 @@ void VideoDriver_SDL_DS::UpdateGamepadInput(float dt_sec)
 	}
 
 	if (lx != 0.0f || ly != 0.0f) {
-		const float pan_speed = 900.0f;
+		const float pan_speed = (this->cfg_top_h >= 1000) ? 1350.0f : 900.0f;
 		PanMainViewportPixels(static_cast<int>(std::lround(lx * pan_speed * dt_sec)),
 			static_cast<int>(std::lround(ly * pan_speed * dt_sec)));
 	}
 
 	if (rx != 0.0f || ry != 0.0f) {
-		const float cursor_speed = 640.0f;
+		const float cursor_speed = (this->cfg_top_h >= 1000) ? 960.0f : 640.0f;
 		int dx = static_cast<int>(std::lround(rx * cursor_speed * dt_sec));
 		int dy = static_cast<int>(std::lround(ry * cursor_speed * dt_sec));
 		Point cur_top = DualScreen::GetTopCursorPos();

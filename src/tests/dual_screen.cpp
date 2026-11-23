@@ -12,6 +12,7 @@
 #include "../3rdparty/catch2/catch.hpp"
 
 #include "../dual_screen.h"
+#include "../fontcache.h"
 #include "../gfx_func.h"
 
 #include <limits>
@@ -69,7 +70,7 @@ TEST_CASE("DualScreen - Single-screen vs dual-screen geometry and virtual dimens
 		CHECK(bot.bottom == top.bottom);
 	}
 
-	SECTION("Active AYN Thor logical dual-screen geometry (1280x720 + 826x720)")
+	SECTION("Active AYN Thor native dual-screen geometry (1920x1080 + 1240x1080)")
 	{
 		DualScreen::SetGeometry(
 			DualScreen::DEFAULT_TOP_WIDTH,
@@ -79,20 +80,20 @@ TEST_CASE("DualScreen - Single-screen vs dual-screen geometry and virtual dimens
 			true);
 
 		CHECK(DualScreen::IsActive());
-		CHECK(DualScreen::GetTopWidth() == 1280);
-		CHECK(DualScreen::GetTopHeight() == 720);
-		CHECK(DualScreen::GetBottomWidth() == 826);
-		CHECK(DualScreen::GetBottomHeight() == 720);
-		CHECK(DualScreen::GetBottomOriginY() == 720);
-		CHECK(DualScreen::GetVirtualWidth() == 1280);
-		CHECK(DualScreen::GetVirtualHeight() == 1440);
+		CHECK(DualScreen::GetTopWidth() == 1920);
+		CHECK(DualScreen::GetTopHeight() == 1080);
+		CHECK(DualScreen::GetBottomWidth() == 1240);
+		CHECK(DualScreen::GetBottomHeight() == 1080);
+		CHECK(DualScreen::GetBottomOriginY() == 1080);
+		CHECK(DualScreen::GetVirtualWidth() == 1920);
+		CHECK(DualScreen::GetVirtualHeight() == 2160);
 
 		auto cfg = DualScreen::GetConfig();
 		CHECK(cfg.active);
-		CHECK(cfg.top_w == 1280);
-		CHECK(cfg.top_h == 720);
-		CHECK(cfg.bot_w == 826);
-		CHECK(cfg.bot_h == 720);
+		CHECK(cfg.top_w == 1920);
+		CHECK(cfg.top_h == 1080);
+		CHECK(cfg.bot_w == 1240);
+		CHECK(cfg.bot_h == 1080);
 	}
 
 	SECTION("Wider bottom display dictates virtual width")
@@ -433,15 +434,15 @@ TEST_CASE("DualScreen - Top cursor tracking and GUI scale calculation", "[dual_s
 
 	SECTION("Top cursor position initializes centered, clamps to Top screen, and adapts on geometry change")
 	{
-		DualScreen::SetGeometry(1280, 720, 826, 720, true);
-		CHECK(DualScreen::GetTopCursorPos() == Point{ 640, 360 });
+		DualScreen::SetGeometry(1920, 1080, 1240, 1080, true);
+		CHECK(DualScreen::GetTopCursorPos() == Point{ 960, 540 });
 
 		DualScreen::SetTopCursorPos({ 500, 300 });
 		CHECK(DualScreen::GetTopCursorPos() == Point{ 500, 300 });
 
 		/* Out-of-bounds or Bottom-screen coordinates clamp cleanly inside Top screen. */
 		DualScreen::SetTopCursorPos({ 2000, 1100 });
-		CHECK(DualScreen::GetTopCursorPos() == Point{ 1279, 719 });
+		CHECK(DualScreen::GetTopCursorPos() == Point{ 1919, 1079 });
 		DualScreen::SetTopCursorPos({ -50, -25 });
 		CHECK(DualScreen::GetTopCursorPos() == Point{ 0, 0 });
 
@@ -451,7 +452,7 @@ TEST_CASE("DualScreen - Top cursor tracking and GUI scale calculation", "[dual_s
 		CHECK(DualScreen::GetTopCursorPos() == Point{ 799, 599 });
 
 		DualScreen::Reset();
-		CHECK(DualScreen::GetTopCursorPos() == Point{ 640, 360 });
+		CHECK(DualScreen::GetTopCursorPos() == Point{ 960, 540 });
 	}
 
 	SECTION("GUI automatic and maximum scales use Bottom Command Desk dimensions when dual-screen is active")
@@ -461,19 +462,52 @@ TEST_CASE("DualScreen - Top cursor tracking and GUI scale calculation", "[dual_s
 		CHECK(GetAutomaticScale() == 150);
 		CHECK(GetMaximumScale() == 200);
 
-		/* Dual-screen logical 1280x720 + 826x720 (_screen=1280x1440): must use Bottom 826x720 -> auto 125%, max 150%. */
+		/* Dual-screen custom 1280x720 + 826x720 (_screen=1280x1440): Bottom 826x720 -> auto 150%, max 200%. */
 		DualScreen::SetGeometry(1280, 720, 826, 720, true);
 		_screen.width = DualScreen::GetVirtualWidth();
 		_screen.height = DualScreen::GetVirtualHeight();
-		CHECK(GetAutomaticScale() == 125);
-		CHECK(GetMaximumScale() == 150);
+		CHECK(GetAutomaticScale() == 150);
+		CHECK(GetMaximumScale() == 200);
 
-		/* Dual-screen native AYN Thor 1920x1080 + 1240x1080: Bottom 1240x1080 -> auto 175%, max 250%. */
+		/* Dual-screen native AYN Thor 1920x1080 + 1240x1080: Bottom 1240x1080 -> auto 250%, max 325%. */
 		DualScreen::SetGeometry(1920, 1080, 1240, 1080, true);
 		_screen.width = DualScreen::GetVirtualWidth();
 		_screen.height = DualScreen::GetVirtualHeight();
-		CHECK(GetAutomaticScale() == 175);
-		CHECK(GetMaximumScale() == 250);
+		CHECK(GetAutomaticScale() == 250);
+		CHECK(GetMaximumScale() == 325);
+	}
+
+	SECTION("Default unconfigured font sizes scale up for dual-screen legibility and respect explicit overrides")
+	{
+		struct FontSettingsGuard {
+			FontCacheSettings saved = _fcsettings;
+			~FontSettingsGuard() { _fcsettings = this->saved; }
+		} fc_guard;
+
+		_fcsettings.small = {};
+		_fcsettings.medium = {};
+		_fcsettings.large = {};
+		_fcsettings.mono = {};
+
+		/* Single-screen inactive keeps standard desktop font heights. */
+		CHECK_FALSE(DualScreen::IsActive());
+		CHECK(GetFontCacheFontSize(FontSize::Normal) == 10);
+		CHECK(GetFontCacheFontSize(FontSize::Small) == 6);
+		CHECK(GetFontCacheFontSize(FontSize::Large) == 18);
+		CHECK(GetFontCacheFontSize(FontSize::Monospace) == 10);
+
+		/* Active dual-screen increases unconfigured TrueType font heights for 3.92-inch legibility. */
+		DualScreen::SetGeometry(1920, 1080, 1240, 1080, true);
+		CHECK(GetFontCacheFontSize(FontSize::Normal) == 12);
+		CHECK(GetFontCacheFontSize(FontSize::Small) == 9);
+		CHECK(GetFontCacheFontSize(FontSize::Large) == 20);
+		CHECK(GetFontCacheFontSize(FontSize::Monospace) == 12);
+
+		/* Explicit user font size overrides always take precedence. */
+		_fcsettings.medium.size = 16;
+		_fcsettings.small.size = 11;
+		CHECK(GetFontCacheFontSize(FontSize::Normal) == 16);
+		CHECK(GetFontCacheFontSize(FontSize::Small) == 11);
 	}
 }
 

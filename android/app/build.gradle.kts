@@ -52,8 +52,8 @@ android {
         applicationId = "com.openttd.ds"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "17.0-thor-ds"
+        versionCode = 2
+        versionName = "17.0-thor-ds.2"
 
         ndk {
             abiFilters += "arm64-v8a"

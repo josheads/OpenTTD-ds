@@ -17,6 +17,9 @@
 #include "viewport_func.h"
 #include "window_func.h"
 #include "fileio_func.h"
+#ifdef WITH_DUAL_SCREEN
+#include "dual_screen.h"
+#endif
 
 #include "safeguards.h"
 
@@ -162,7 +165,21 @@ static bool IsDefaultFont(const FontCacheSubSetting &setting)
 uint GetFontCacheFontSize(FontSize fs)
 {
 	const FontCacheSubSetting &setting = *GetFontCacheSubSetting(fs);
-	return IsDefaultFont(setting) && setting.size == 0 ? FontCache::GetDefaultFontHeight(fs) : setting.size;
+	if (IsDefaultFont(setting) && setting.size == 0) {
+#ifdef WITH_DUAL_SCREEN
+		if (DualScreen::IsActive()) {
+			switch (fs) {
+				case FontSize::Normal: return 12;
+				case FontSize::Small: return 9;
+				case FontSize::Large: return 20;
+				case FontSize::Monospace: return 12;
+				default: break;
+			}
+		}
+#endif
+		return FontCache::GetDefaultFontHeight(fs);
+	}
+	return setting.size;
 }
 
 #if defined(WITH_FREETYPE) || defined(_WIN32) || defined(WITH_COCOA)

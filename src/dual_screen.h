@@ -21,11 +21,11 @@ enum class ScreenTarget : uint8_t {
 	Bottom = 1, ///< Secondary 31:27 bottom display (command desk, toolbars, minimap, windows).
 };
 
-/** Default logical resolutions (1.5x crisp integer-friendly scaling onto AYN Thor 1920x1080 + 1240x1080). */
-static constexpr int DEFAULT_TOP_WIDTH = 1280;
-static constexpr int DEFAULT_TOP_HEIGHT = 720;
-static constexpr int DEFAULT_BOTTOM_WIDTH = 826;
-static constexpr int DEFAULT_BOTTOM_HEIGHT = 720;
+/** Default logical resolutions (1:1 native pixel match onto AYN Thor 1920x1080 + 1240x1080). */
+static constexpr int DEFAULT_TOP_WIDTH = 1920;
+static constexpr int DEFAULT_TOP_HEIGHT = 1080;
+static constexpr int DEFAULT_BOTTOM_WIDTH = 1240;
+static constexpr int DEFAULT_BOTTOM_HEIGHT = 1080;
 
 /** Current dual-screen configuration. */
 struct DualScreenConfig {

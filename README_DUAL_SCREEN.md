@@ -4,10 +4,10 @@ This port adapts OpenTTD to run natively in dual-screen mode on the **AYN Thor**
 
 ## Dual-Screen Architecture
 
-- **Top Screen — Clean World Map (`1920x1080` physical, `1280x720` logical at crisp 1.5× scaling):**
+- **Top Screen — Clean World Map (`1920x1080` physical & logical 1:1):**
   - Unobstructed main game viewport with full map pan, zoom, and direct touch/cursor interaction.
   - Hosted by `OpenTTDActivity` (extending SDL3 `SDLActivity`).
-- **Bottom Screen — Command Desk (`1240x1080` physical, `826x720` logical at crisp 1.5× scaling):**
+- **Bottom Screen — Command Desk (`1240x1080` physical & logical 1:1, `250%` automatic UI scaling with `2x` sprites):**
   - Hosts the docked main toolbar, status bar, Quick Action Bar, docked minimap (`SmallMap`) backdrop, and newly spawned build/management/menu windows.
   - Hosted on Android via a non-focusable immersive `SecondaryScreenPresentation` (`FLAG_NOT_FOCUSABLE | FLAG_KEEP_SCREEN_ON`) so bottom-screen touches never steal hardware gamepad or keyboard focus from the top screen.
   - Dynamically detects secondary display hotplug/sleep transitions and gracefully falls back to single-screen mode if the bottom screen is unavailable.
@@ -108,7 +108,7 @@ Optional driver parameters can be passed as comma-separated `key=value` pairs af
 # Example: larger simulator windows (75% scale)
 .\build-win\openttd.exe -v sdl_ds:scale=0.75
 
-# Example: custom logical resolutions or single-screen test
+# Example: custom lower logical resolutions or single-screen test
 .\build-win\openttd.exe -v sdl_ds:top_w=1280,top_h=720,bot_w=826,bot_h=720,scale=0.60
 .\build-win\openttd.exe -v sdl_ds:single
 

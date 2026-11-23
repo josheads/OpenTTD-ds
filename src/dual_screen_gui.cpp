@@ -188,12 +188,12 @@ static WindowDesc _bottom_desk_desc(
 
 static constexpr std::initializer_list<NWidgetPart> _nested_ds_action_bar_widgets = {
 	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_MAP), SetMinimalSize(60, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_TRACKPAD), SetMinimalSize(72, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_SWAP), SetMinimalSize(64, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_RCLICK), SetMinimalSize(68, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_CLEAR), SetMinimalSize(60, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_KEYBOARD), SetMinimalSize(56, 22), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_MAP), SetMinimalSize(60, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_TRACKPAD), SetMinimalSize(72, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_SWAP), SetMinimalSize(64, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_RCLICK), SetMinimalSize(68, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DSA_CLEAR), SetMinimalSize(60, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DSA_KEYBOARD), SetMinimalSize(56, 26), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
 	EndContainer(),
 };
 
@@ -303,12 +303,12 @@ static WindowDesc _ds_action_bar_desc(
 static constexpr std::initializer_list<NWidgetPart> _nested_ds_trackpad_widgets = {
 	NWidget(WWT_PANEL, Colours::DarkBlue, WID_DST_PAD), SetFill(1, 1), SetResize(1, 1), EndContainer(),
 	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_LCLICK), SetMinimalSize(60, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_RCLICK), SetMinimalSize(60, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DST_DRAG), SetMinimalSize(68, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_ZOOM_OUT), SetMinimalSize(56, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_ZOOM_IN), SetMinimalSize(56, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
-		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_EXIT), SetMinimalSize(56, 28), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_LCLICK), SetMinimalSize(60, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_RCLICK), SetMinimalSize(60, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_TEXTBTN, Colours::DarkBlue, WID_DST_DRAG), SetMinimalSize(68, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_ZOOM_OUT), SetMinimalSize(56, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_ZOOM_IN), SetMinimalSize(56, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
+		NWidget(WWT_PUSHTXTBTN, Colours::DarkBlue, WID_DST_EXIT), SetMinimalSize(56, 30), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_JUST_RAW_STRING),
 	EndContainer(),
 };
 
